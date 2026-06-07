@@ -1,0 +1,55 @@
+# Project/private docs
+doc/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Xcode build products
+.derivedData/
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcarchive
+
+# Swift Package Manager
+.build/
+Packages/
+
+# CocoaPods / Carthage / Mint
+Pods/
+Carthage/Build/
+.mint/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.mobileprovision
+*.p12
+*.cer
+*.key
+
+# Generated app data and backups
+*.backup
+*.bak
+Subly-Backup-*.json
+
+# Logs
+*.log
+
+Subly.xcodeproj/*
