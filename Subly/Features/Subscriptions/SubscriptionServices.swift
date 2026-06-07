@@ -45,6 +45,9 @@ struct SubscriptionValidator {
         if let endDate = draft.endDate, Calendar.current.startOfDay(for: endDate) < Calendar.current.startOfDay(for: draft.startDate) {
             throw ValidationError.invalidDateRange
         }
+        if draft.billingCycle == .oneTime, draft.endDate == nil {
+            throw ValidationError.invalidDateRange
+        }
         if let nextBillingDate = draft.nextBillingDate, Calendar.current.startOfDay(for: nextBillingDate) < Calendar.current.startOfDay(for: draft.startDate) {
             throw ValidationError.invalidDateRange
         }
@@ -306,24 +309,24 @@ struct SubscriptionCommandService {
         return record
     }
 
-    func pause(id: UUID, on date: Date) throws {
+    func pause(id: UUID, now: Date = Date()) throws {
         guard var record = try repository.fetch(id: id) else { return }
         guard record.status != .cancelled && record.status != .expired else {
             throw SublyError.invalidOperation("已取消或已过期的订阅不能暂停")
         }
         record.status = .paused
-        record.endDate = date
-        record.updatedAt = Date()
+        record.endDate = now
+        record.updatedAt = now
         try repository.save(record)
         Task { await reminderSync?.cancel(recordId: id) }
         events?.post(.subscriptionsChanged)
     }
 
-    func cancel(id: UUID, on date: Date) throws {
+    func cancel(id: UUID, now: Date = Date()) throws {
         guard var record = try repository.fetch(id: id) else { return }
         record.status = .cancelled
-        record.endDate = date
-        record.updatedAt = Date()
+        record.endDate = now
+        record.updatedAt = now
         try repository.save(record)
         Task { await reminderSync?.cancel(recordId: id) }
         events?.post(.subscriptionsChanged)
@@ -367,7 +370,6 @@ struct SubscriptionDetailState: Equatable {
 @MainActor
 final class SubscriptionDetailViewModel: ObservableObject {
     @Published var state: SubscriptionDetailState?
-    @Published var actionDate = Date()
     @Published var restoreAmount = ""
     @Published var errorMessage: String?
 
@@ -385,7 +387,6 @@ final class SubscriptionDetailViewModel: ObservableObject {
         do {
             if let record = try queryService.detail(id: id) {
                 state = SubscriptionDetailState(record: record)
-                actionDate = record.endDate ?? Date()
                 restoreAmount = "\(record.listedAmount)"
             }
         } catch {
@@ -395,13 +396,13 @@ final class SubscriptionDetailViewModel: ObservableObject {
 
     func pause() {
         perform {
-            try commandService.pause(id: id, on: actionDate)
+            try commandService.pause(id: id)
         }
     }
 
     func cancel() {
         perform {
-            try commandService.cancel(id: id, on: actionDate)
+            try commandService.cancel(id: id)
         }
     }
 

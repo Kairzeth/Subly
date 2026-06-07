@@ -3,12 +3,37 @@ import SwiftUI
 struct RootTabView: View {
     let environment: AppEnvironment
     @ObservedObject private var appState: GlobalAppState
+    @StateObject private var homeViewModel: HomeViewModel
+    @StateObject private var statisticsViewModel: StatisticsViewModel
+    @StateObject private var settingsViewModel: SettingsViewModel
     @State private var selectedTab: RootTab = .home
     @State private var appSettings = AppSettings.defaults()
+    @Environment(\.scenePhase) private var scenePhase
 
     init(environment: AppEnvironment) {
         self.environment = environment
         _appState = ObservedObject(wrappedValue: environment.appState)
+        _homeViewModel = StateObject(wrappedValue: HomeViewModel(
+            subscriptions: environment.subscriptions,
+            categories: environment.categories,
+            templates: environment.templates,
+            exchangeRates: environment.exchangeRates,
+            settings: environment.settings
+        ))
+        _statisticsViewModel = StateObject(wrappedValue: StatisticsViewModel(queryService: StatisticsQueryService(
+            subscriptions: environment.subscriptions,
+            categories: environment.categories,
+            exchangeRates: environment.exchangeRates,
+            settings: environment.settings
+        )))
+        _settingsViewModel = StateObject(wrappedValue: SettingsViewModel(
+            repository: environment.settings,
+            exchangeRates: environment.exchangeRates,
+            exchangeRateRefresh: environment.exchangeRateRefresh,
+            backupRestore: environment.backupRestore,
+            reminderSync: environment.reminderSync,
+            events: environment.events
+        ))
     }
 
     var body: some View {
@@ -18,25 +43,13 @@ struct RootTabView: View {
             .tag(RootTab.home)
 
             NavigationStack {
-                StatisticsView(viewModel: StatisticsViewModel(queryService: StatisticsQueryService(
-                    subscriptions: environment.subscriptions,
-                    categories: environment.categories,
-                    exchangeRates: environment.exchangeRates,
-                    settings: environment.settings
-                )), events: environment.events)
+                StatisticsView(viewModel: statisticsViewModel, events: environment.events)
             }
             .tabItem { Label("统计", systemImage: "chart.pie") }
             .tag(RootTab.statistics)
 
             NavigationStack {
-                SettingsView(viewModel: SettingsViewModel(
-                    repository: environment.settings,
-                    exchangeRates: environment.exchangeRates,
-                    exchangeRateRefresh: environment.exchangeRateRefresh,
-                    backupRestore: environment.backupRestore,
-                    reminderSync: environment.reminderSync,
-                    events: environment.events
-                ), categories: environment.categories, subscriptions: environment.subscriptions, events: environment.events)
+                SettingsView(viewModel: settingsViewModel, categories: environment.categories, subscriptions: environment.subscriptions, events: environment.events)
             }
             .tabItem { Label("设置", systemImage: "gearshape") }
             .tag(RootTab.settings)
@@ -44,6 +57,12 @@ struct RootTabView: View {
         .preferredColorScheme(appSettings.followSystemAppearance ? nil : .light)
         .task {
             loadSettings()
+            homeViewModel.load()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                homeViewModel.load()
+            }
         }
         .onReceive(environment.events.publisher) { notification in
             if let event = notification.userInfo?["event"] as? AppEvent,
@@ -71,13 +90,7 @@ struct RootTabView: View {
     private var homeTab: some View {
         NavigationStack {
             HomeView(
-                viewModel: HomeViewModel(
-                    subscriptions: environment.subscriptions,
-                    categories: environment.categories,
-                    templates: environment.templates,
-                    exchangeRates: environment.exchangeRates,
-                    settings: environment.settings
-                ),
+                viewModel: homeViewModel,
                 repository: environment.subscriptions,
                 categories: environment.categories,
                 templates: environment.templates,

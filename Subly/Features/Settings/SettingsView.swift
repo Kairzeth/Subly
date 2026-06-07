@@ -15,13 +15,7 @@ struct SettingsView: View {
     var body: some View {
         List {
             Section("显示") {
-                Picker("主显示货币", selection: Binding(
-                    get: { viewModel.settings.primaryDisplayCurrency },
-                    set: { viewModel.setPrimaryCurrency($0) }
-                )) {
-                    Text("CNY").tag(CurrencyCode.CNY)
-                    Text("USD").tag(CurrencyCode.USD)
-                }
+                LabeledContent("主显示货币", value: "CNY")
                 Toggle("跟随系统外观", isOn: Binding(
                     get: { viewModel.settings.followSystemAppearance },
                     set: { viewModel.setFollowSystemAppearance($0) }
@@ -44,19 +38,6 @@ struct SettingsView: View {
                     get: { viewModel.settings.defaultReminderConfig.daysBefore },
                     set: { viewModel.setDefaultReminder(enabled: viewModel.settings.defaultReminderConfig.isEnabled, daysBefore: $0) }
                 ), in: 0...30)
-            }
-            Section("分类") {
-                if let categories, let subscriptions {
-                    NavigationLink {
-                        CategoryManagementView(viewModel: CategoryManagementViewModel(
-                            categories: categories,
-                            subscriptions: subscriptions,
-                            events: events
-                        ))
-                    } label: {
-                        Label("分类管理", systemImage: "square.grid.2x2")
-                    }
-                }
             }
             Section("数据") {
                 Button {

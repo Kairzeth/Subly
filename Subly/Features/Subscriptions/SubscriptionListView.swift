@@ -106,7 +106,6 @@ struct SubscriptionDetailView: View {
                 }
 
                 Section("日期") {
-                    DatePicker("操作日期", selection: $viewModel.actionDate, displayedComponents: .date)
                     LabeledContent("开始日期", value: record.startDate.formatted(date: .abbreviated, time: .omitted))
                     if let endDate = record.endDate {
                         LabeledContent("结束日期", value: endDate.formatted(date: .abbreviated, time: .omitted))
@@ -498,6 +497,14 @@ struct SubscriptionFormView: View {
         }
         .task {
             viewModel.load()
+        }
+        .onChange(of: viewModel.billingCycle) { _, cycle in
+            if cycle == .oneTime {
+                viewModel.hasEndDate = true
+                if viewModel.endDate < viewModel.startDate {
+                    viewModel.endDate = viewModel.startDate
+                }
+            }
         }
     }
 }

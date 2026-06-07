@@ -59,6 +59,7 @@ struct HomeView: View {
             Section("即将到期") {
                 if viewModel.state.dueSoonRows.isEmpty {
                     EmptyStateView(title: "近 30 天暂无到期项目", systemImage: "calendar.badge.clock")
+                        .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     ForEach(viewModel.state.dueSoonRows.prefix(8)) { row in
                         DueSoonRowView(row: row)
@@ -129,16 +130,33 @@ struct HomeView: View {
 
 private struct SummaryPanelView: View {
     var state: HomeDashboardViewState
+    @State private var selectedCard: HomeSummaryCardState?
 
     var body: some View {
         VStack(alignment: .leading, spacing: SublySpacing.md) {
-            Text("总计")
-                .font(.headline)
+            HStack {
+                Text("总览")
+                    .font(.headline)
+                Spacer()
+                Text("摊销视图")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(SublyColor.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(SublyColor.accent.opacity(0.10), in: Capsule())
+            }
 
             HStack(alignment: .top, spacing: SublySpacing.md) {
-                ForEach(state.summaryCards.filter { $0.money != nil }) { card in
-                    SummaryMetricView(card: card)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(Array(state.summaryCards.filter { $0.money != nil }.enumerated()), id: \.element.id) { index, card in
+                    Button {
+                        guard !card.detailRows.isEmpty else { return }
+                        selectedCard = card
+                    } label: {
+                        SummaryMetricView(card: card, tint: SublyColor.chartColor(at: index))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(card.detailRows.isEmpty ? "" : "点击查看摊销明细")
                 }
             }
 
@@ -160,25 +178,48 @@ private struct SummaryPanelView: View {
             }
         }
         .padding(.vertical, SublySpacing.sm)
+        .popover(item: $selectedCard) { card in
+            AmortizedDetailPopover(card: card)
+                .presentationCompactAdaptation(.popover)
+        }
     }
 }
 
 struct SummaryMetricView: View {
     var card: HomeSummaryCardState
+    var tint: Color
 
     init(card: HomeSummaryCardState) {
         self.card = card
+        self.tint = SublyColor.accent
+    }
+
+    init(card: HomeSummaryCardState, tint: Color) {
+        self.card = card
+        self.tint = tint
     }
 
     init(title: String, money: Money?) {
         self.card = .money(title, title: title, money: money)
+        self.tint = SublyColor.accent
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(card.title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: SublySpacing.xs) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(tint.gradient)
+                    .frame(width: 8, height: 8)
+                Text(card.title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if !card.detailRows.isEmpty {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(tint)
+                }
+            }
             if let count = card.count {
                 Text("\(count)")
                     .font(.title3.weight(.semibold))
@@ -186,6 +227,75 @@ struct SummaryMetricView: View {
                 CurrencyAmountText(money: card.money)
             }
         }
+        .padding(SublySpacing.sm)
+        .background(
+            LinearGradient(
+                colors: [tint.opacity(0.16), tint.opacity(0.05), SublyColor.surface.opacity(0.65)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        )
+    }
+}
+
+private struct AmortizedDetailPopover: View {
+    var card: HomeSummaryCardState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SublySpacing.md) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card.title)
+                        .font(.headline)
+                    Text("每个订阅的摊销金额")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                CurrencyAmountText(money: card.money, font: .system(.headline, design: .rounded, weight: .bold))
+            }
+
+            if card.detailRows.isEmpty {
+                EmptyStateView(title: "暂无摊销明细", systemImage: "tray")
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else {
+                ScrollView {
+                    VStack(spacing: SublySpacing.sm) {
+                        ForEach(Array(card.detailRows.enumerated()), id: \.element.id) { index, row in
+                            HStack(spacing: SublySpacing.sm) {
+                                Image(systemName: row.iconName)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 34, height: 34)
+                                    .background(SublyColor.chartColor(at: index).gradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .lineLimit(1)
+                                    Text(row.categoryName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(row.money.formatted)
+                                    .font(.system(.subheadline, design: .rounded, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
+                            }
+                            .padding(SublySpacing.sm)
+                            .background(SublyColor.chartColor(at: index).opacity(0.09), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        }
+                    }
+                }
+            }
+        }
+        .padding(SublySpacing.md)
+        .frame(minWidth: 320, idealWidth: 360, maxWidth: 420, maxHeight: 460)
     }
 }
 
@@ -243,7 +353,7 @@ private struct DueSoonRowView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(width: 48, height: 48)
-            .background(SublyColor.surface, in: RoundedRectangle(cornerRadius: SublyCornerRadius.card))
+            .background(SublyColor.mint.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 Label(row.name, systemImage: row.iconName)
@@ -256,6 +366,7 @@ private struct DueSoonRowView: View {
             Spacer()
             CurrencyAmountText(money: row.money, font: .system(.subheadline, design: .rounded, weight: .semibold))
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, SublySpacing.xs)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }

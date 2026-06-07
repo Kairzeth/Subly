@@ -8,9 +8,31 @@ enum SublyColor {
     static let background = Color.gray.opacity(0.08)
     static let surface = Color.gray.opacity(0.14)
     #endif
-    static let accent = Color.indigo
-    static let warning = Color.orange
-    static let danger = Color.red
+    static let accent = Color(red: 0.25, green: 0.42, blue: 0.96)
+    static let accentDeep = Color(red: 0.12, green: 0.20, blue: 0.48)
+    static let mint = Color(red: 0.12, green: 0.70, blue: 0.62)
+    static let coral = Color(red: 0.94, green: 0.40, blue: 0.32)
+    static let amber = Color(red: 0.96, green: 0.64, blue: 0.20)
+    static let orchid = Color(red: 0.58, green: 0.35, blue: 0.93)
+    static let sky = Color(red: 0.18, green: 0.63, blue: 0.91)
+    static let slate = Color(red: 0.25, green: 0.29, blue: 0.38)
+    static let warning = amber
+    static let danger = coral
+
+    static let chartPalette: [Color] = [
+        accent,
+        mint,
+        coral,
+        amber,
+        orchid,
+        sky,
+        Color(red: 0.72, green: 0.38, blue: 0.56),
+        Color(red: 0.34, green: 0.56, blue: 0.30)
+    ]
+
+    static func chartColor(at index: Int) -> Color {
+        chartPalette[index % chartPalette.count]
+    }
 }
 
 enum SublySpacing {

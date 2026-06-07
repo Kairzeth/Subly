@@ -37,6 +37,95 @@ final class ViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.state.monthTotal)
     }
 
+    func testHomeViewModelYearAmortizationCutsOpenEndedSubscriptionsAtToday() throws {
+        let category = sampleCategory()
+        let iCloud = sampleRecord(
+            name: "iCloud+",
+            serviceKey: "icloud-plus",
+            categoryId: category.id,
+            amount: 40,
+            currency: .CNY,
+            cycle: .quarterly,
+            start: date("2025-08-12")
+        )
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [iCloud]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2026-01-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2026-06-08") }
+        )
+
+        viewModel.load()
+
+        let yearCard = try XCTUnwrap(viewModel.state.summaryCards.first { $0.id == "year" })
+        let iCloudDetail = try XCTUnwrap(yearCard.detailRows.first { $0.name == "iCloud+" })
+        XCTAssertEqual(NSDecimalNumber(decimal: iCloudDetail.money.amount).doubleValue, 70.43, accuracy: 0.01)
+    }
+
+    func testHomeViewModelYearAmortizationIncludesFullOneTimeWindowInsideYear() throws {
+        let category = sampleCategory()
+        let chatGPT = sampleRecord(
+            name: "ChatGPT",
+            serviceKey: "chatgpt",
+            categoryId: category.id,
+            amount: 19.99,
+            currency: .USD,
+            cycle: .oneTime,
+            start: date("2026-06-06"),
+            end: date("2026-07-05")
+        )
+        var paidRecord = chatGPT
+        paidRecord.paidAmount = Decimal(string: "135.99")
+        paidRecord.paidCurrency = .CNY
+
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [paidRecord]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2026-01-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2026-06-08") }
+        )
+
+        viewModel.load()
+
+        let yearCard = try XCTUnwrap(viewModel.state.summaryCards.first { $0.id == "year" })
+        let chatGPTDetail = try XCTUnwrap(yearCard.detailRows.first { $0.name == "ChatGPT" })
+        XCTAssertEqual(chatGPTDetail.money.amount, Decimal(string: "135.99"))
+    }
+
+    func testHomeViewModelMonthAmortizationCutsOpenEndedSubscriptionsAtToday() throws {
+        let category = sampleCategory()
+        let iCloud = sampleRecord(
+            name: "iCloud+",
+            serviceKey: "icloud-plus",
+            categoryId: category.id,
+            amount: 40,
+            currency: .CNY,
+            cycle: .quarterly,
+            start: date("2025-08-12")
+        )
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [iCloud]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2026-01-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2026-06-08") }
+        )
+
+        viewModel.load()
+
+        let monthCard = try XCTUnwrap(viewModel.state.summaryCards.first { $0.id == "month" })
+        let iCloudDetail = try XCTUnwrap(monthCard.detailRows.first { $0.name == "iCloud+" })
+        XCTAssertEqual(NSDecimalNumber(decimal: iCloudDetail.money.amount).doubleValue, 3.48, accuracy: 0.01)
+    }
+
     func testHomeViewModelDistinguishesNoRecordsFromNoActiveRecords() {
         let category = sampleCategory()
         let emptyViewModel = HomeViewModel(

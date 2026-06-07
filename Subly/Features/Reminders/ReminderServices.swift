@@ -42,7 +42,7 @@ struct UserNotificationScheduler: LocalNotificationScheduling {
     }
 
     func requestAuthorization() async throws -> Bool {
-        try await center.requestAuthorization(options: [.alert, .badge, .sound])
+        try await center.requestAuthorization(options: [.alert, .sound])
     }
 
     func schedule(plans: [ReminderPlan]) async throws {
@@ -51,7 +51,6 @@ struct UserNotificationScheduler: LocalNotificationScheduling {
             content.title = plan.title
             content.body = plan.body
             content.sound = .default
-            content.badge = NSNumber(value: plan.badgeDelta)
             let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: plan.fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             try await center.add(UNNotificationRequest(identifier: plan.id, content: content, trigger: trigger))
@@ -126,7 +125,7 @@ struct ReminderSyncService {
         let plans = try subscriptions.fetchAll()
             .flatMap { try generator.plans(for: $0, defaultConfig: appSettings.defaultReminderConfig, now: now) }
         try await scheduleIfAllowed(plans)
-        await scheduler.setBadgeCount(plans.reduce(0) { $0 + max(0, $1.badgeDelta) })
+        await scheduler.setBadgeCount(0)
     }
 
     func permissionStatus() async -> NotificationPermissionStatus {

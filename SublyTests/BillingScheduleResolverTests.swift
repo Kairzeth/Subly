@@ -34,6 +34,24 @@ final class BillingScheduleResolverTests: XCTestCase {
         XCTAssertEqual(try resolver.nextBillingDate(for: record, after: date("2026-01-10")), date("2026-02-14"))
     }
 
+    func testMonthlyBillingKeepsOriginalStartDayAnchor() throws {
+        let resolver = BillingScheduleResolver(calendar: fixedCalendar())
+        let record = sampleRecord(cycle: .monthly, start: date("2026-01-31"))
+
+        let nextBillingDate = try resolver.nextBillingDate(for: record, after: date("2026-03-01"))
+
+        XCTAssertEqual(nextBillingDate, date("2026-03-31"))
+    }
+
+    func testLeapDayYearlyBillingKeepsOriginalStartDayAnchor() throws {
+        let resolver = BillingScheduleResolver(calendar: fixedCalendar())
+        let record = sampleRecord(cycle: .yearly, start: date("2024-02-29"))
+
+        let nextBillingDate = try resolver.nextBillingDate(for: record, after: date("2027-03-01"))
+
+        XCTAssertEqual(nextBillingDate, date("2028-02-29"))
+    }
+
     func testOneTimeWithoutEndDateThrows() throws {
         let resolver = BillingScheduleResolver(calendar: fixedCalendar())
         let record = sampleRecord(cycle: .oneTime)

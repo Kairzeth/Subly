@@ -46,7 +46,8 @@ enum CategorySeed {
             "template.office365": "20000000-0000-0000-0000-000000000013",
             "template.goodnotes": "20000000-0000-0000-0000-000000000014",
             "template.baidu-netdisk": "20000000-0000-0000-0000-000000000015",
-            "template.qq-music": "20000000-0000-0000-0000-000000000016"
+            "template.qq-music": "20000000-0000-0000-0000-000000000016",
+            "template.vpn": "20000000-0000-0000-0000-000000000017"
         ]
         return UUID(uuidString: known[key] ?? "ffffffff-ffff-ffff-ffff-ffffffffffff")!
     }
@@ -86,7 +87,8 @@ enum ServiceTemplateSeed {
             ("Office365", "office365", "工具", .monthly, .CNY, "doc.on.doc"),
             ("GoodNotes", "goodnotes", "学习", .yearly, .CNY, "pencil.and.outline"),
             ("Baidu Netdisk", "baidu-netdisk", "云服务", .monthly, .CNY, "externaldrive.connected.to.line.below"),
-            ("QQ Music", "qq-music", "影音", .monthly, .CNY, "music.note")
+            ("QQ Music", "qq-music", "影音", .monthly, .CNY, "music.note"),
+            ("VPN", "vpn", "工具", .monthly, .CNY, "network.badge.shield.half.filled")
         ]
         return rows.enumerated().map { index, row in
             ServiceTemplate(

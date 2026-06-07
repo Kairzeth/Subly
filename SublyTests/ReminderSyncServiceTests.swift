@@ -34,7 +34,7 @@ final class ReminderSyncServiceTests: XCTestCase {
         }
     }
 
-    func testRebuildAllCancelsAllSchedulesAndUpdatesBadge() async throws {
+    func testRebuildAllCancelsAllSchedulesAndClearsBadge() async throws {
         let records = [
             sampleRecord(name: "A", serviceKey: "a", start: date("2026-01-10")),
             sampleRecord(name: "B", serviceKey: "b", start: date("2026-01-11"))
@@ -46,7 +46,7 @@ final class ReminderSyncServiceTests: XCTestCase {
 
         XCTAssertEqual(scheduler.cancelAllCount, 1)
         XCTAssertEqual(scheduler.scheduledPlanIds.count, 2)
-        XCTAssertEqual(scheduler.badgeCounts, [2])
+        XCTAssertEqual(scheduler.badgeCounts, [0])
     }
 
     func testRequestPermissionAsksEvenWithoutReminderPlans() async throws {

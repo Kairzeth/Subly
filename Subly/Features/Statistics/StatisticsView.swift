@@ -1,36 +1,35 @@
-import Charts
 import SwiftUI
 
 struct StatisticsView: View {
     @StateObject var viewModel: StatisticsViewModel
     var events: AppEventCenter?
-    @State private var categoryScope: StatisticsPeriodScope = .month
-    @State private var serviceScope: StatisticsPeriodScope = .month
-    @State private var selectedMonthlyPoint: PeriodCost?
-    @State private var selectedYearlyPoint: PeriodCost?
 
     var body: some View {
         List {
             Section {
-                PeriodScopePicker(selection: $categoryScope)
-                CategoryBarChart(items: categoryItems)
+                SpendingBreakdownCard(
+                    title: "分类",
+                    subtitle: "历史累计支出",
+                    systemImage: "square.grid.2x2",
+                    items: viewModel.state.categories.map {
+                        SpendingBreakdownItem(id: $0.id.uuidString, name: $0.name, money: $0.money)
+                    }
+                )
             } header: {
-                Text("分类占比")
+                Text("分类")
             }
 
             Section {
-                PeriodScopePicker(selection: $serviceScope)
-                ServiceRankingChart(items: serviceItems)
+                SpendingBreakdownCard(
+                    title: "服务",
+                    subtitle: "历史累计支出",
+                    systemImage: "rectangle.stack",
+                    items: viewModel.state.services.map {
+                        SpendingBreakdownItem(id: $0.id, name: $0.name, money: $0.money)
+                    }
+                )
             } header: {
-                Text("服务排名")
-            }
-
-            Section("月度趋势") {
-                TrendLineChart(items: viewModel.state.monthlyTrend, selectedItem: $selectedMonthlyPoint)
-            }
-
-            Section("年度趋势") {
-                TrendLineChart(items: viewModel.state.yearlyTrend, selectedItem: $selectedYearlyPoint)
+                Text("服务")
             }
 
             if viewModel.state.isIncomplete {
@@ -56,149 +55,103 @@ struct StatisticsView: View {
             viewModel.load()
         }
     }
+}
 
-    private var categoryItems: [CategoryCost] {
-        categoryScope == .month ? viewModel.state.monthCategories : viewModel.state.yearCategories
-    }
+private struct SpendingBreakdownItem: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var money: Money
 
-    private var serviceItems: [ServiceCost] {
-        serviceScope == .month ? viewModel.state.monthServices : viewModel.state.yearServices
+    var value: Decimal {
+        money.amount
     }
 }
 
-private struct PeriodScopePicker: View {
-    @Binding var selection: StatisticsPeriodScope
+private struct SpendingBreakdownCard: View {
+    var title: String
+    var subtitle: String
+    var systemImage: String
+    var items: [SpendingBreakdownItem]
 
-    var body: some View {
-        Picker("统计范围", selection: $selection) {
-            ForEach(StatisticsPeriodScope.allCases) { scope in
-                Text(scope.title).tag(scope)
-            }
-        }
-        .pickerStyle(.segmented)
+    private var visibleItems: [SpendingBreakdownItem] {
+        Array(items.prefix(8))
     }
-}
 
-private struct CategoryBarChart: View {
-    var items: [CategoryCost]
-
-    var body: some View {
-        if items.isEmpty {
-            EmptyStateView(title: "暂无分类统计", systemImage: "chart.pie")
-        } else {
-            Chart(items.prefix(8).map { $0 }) { item in
-                BarMark(
-                    x: .value("金额", item.money.chartValue),
-                    y: .value("分类", item.name)
-                )
-                .foregroundStyle(SublyColor.accent.gradient)
-                .annotation(position: .trailing) {
-                    Text(item.money.formatted)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .chartXAxis(.hidden)
-            .frame(height: chartHeight(count: items.count))
-        }
+    private var maxAmount: Decimal {
+        visibleItems.map(\.value).max() ?? 0
     }
-}
-
-private struct ServiceRankingChart: View {
-    var items: [ServiceCost]
 
     var body: some View {
         if items.isEmpty {
-            EmptyStateView(title: "暂无服务排行", systemImage: "list.number")
+            EmptyStateView(title: "暂无\(title)统计", systemImage: systemImage)
         } else {
-            Chart(items.prefix(8).map { $0 }) { item in
-                BarMark(
-                    x: .value("金额", item.money.chartValue),
-                    y: .value("服务", item.name)
-                )
-                .foregroundStyle(.blue.gradient)
-                .annotation(position: .trailing) {
-                    Text(item.money.formatted)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .chartXAxis(.hidden)
-            .frame(height: chartHeight(count: items.count))
-        }
-    }
-}
-
-private struct TrendLineChart: View {
-    var items: [PeriodCost]
-    @Binding var selectedItem: PeriodCost?
-
-    var body: some View {
-        if items.isEmpty {
-            EmptyStateView(title: "暂无趋势数据", systemImage: "chart.xyaxis.line")
-        } else {
-            Chart {
-                ForEach(items) { item in
-                    LineMark(
-                        x: .value("周期", item.title),
-                        y: .value("金额", item.money.chartValue)
+            VStack(alignment: .leading, spacing: SublySpacing.md) {
+                ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
+                    SpendingBreakdownRow(
+                        rank: index + 1,
+                        item: item,
+                        fraction: fraction(for: item),
+                        tint: SublyColor.chartColor(at: index)
                     )
-                    .foregroundStyle(SublyColor.accent)
-                    .interpolationMethod(.catmullRom)
-
-                    PointMark(
-                        x: .value("周期", item.title),
-                        y: .value("金额", item.money.chartValue)
-                    )
-                    .foregroundStyle(SublyColor.accent)
-                }
-
-                if let selectedItem {
-                    RuleMark(x: .value("周期", selectedItem.title))
-                        .foregroundStyle(.secondary.opacity(0.35))
-                        .annotation(position: .top, alignment: .center) {
-                            VStack(spacing: 2) {
-                                Text(selectedItem.title)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                Text(selectedItem.money.formatted)
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: SublyCornerRadius.card))
-                        }
                 }
             }
-            .frame(height: 220)
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    Rectangle()
-                        .fill(.clear)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    guard let plotFrame = proxy.plotFrame else { return }
-                                    let origin = geometry[plotFrame].origin
-                                    let x = value.location.x - origin.x
-                                    if let title: String = proxy.value(atX: x) {
-                                        selectedItem = items.first { $0.title == title }
-                                    }
-                                }
+            .padding(.vertical, SublySpacing.xs)
+        }
+    }
+
+    private func fraction(for item: SpendingBreakdownItem) -> Double {
+        guard maxAmount > 0 else { return 0 }
+        return min(1, NSDecimalNumber(decimal: item.value / maxAmount).doubleValue)
+    }
+}
+
+private struct SpendingBreakdownRow: View {
+    var rank: Int
+    var item: SpendingBreakdownItem
+    var fraction: Double
+    var tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SublySpacing.xs) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(rank)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(tint.gradient, in: Circle())
+                Text(item.name)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Text(item.money.formatted)
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(tint.opacity(0.12))
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [tint, tint.opacity(0.62)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
+                        .frame(width: max(8, geometry.size.width * fraction))
                 }
             }
+            .frame(height: 9)
         }
-    }
-}
-
-private func chartHeight(count: Int) -> CGFloat {
-    CGFloat(max(3, min(8, count))) * 38
-}
-
-private extension Money {
-    var chartValue: Double {
-        NSDecimalNumber(decimal: amount).doubleValue
+        .padding(SublySpacing.sm)
+        .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.12), lineWidth: 1)
+        )
     }
 }

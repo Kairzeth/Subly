@@ -18,20 +18,6 @@ struct PeriodCost: Identifiable, Equatable {
     var money: Money
 }
 
-enum StatisticsPeriodScope: String, CaseIterable, Identifiable {
-    case month
-    case year
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .month: "按月"
-        case .year: "按年"
-        }
-    }
-}
-
 struct StatisticsPageState: Equatable {
     var monthTotal: Money?
     var yearTotal: Money?
@@ -88,6 +74,7 @@ struct StatisticsQueryService {
         )
         let month = engine.billedTotal(records: records, range: try monthRange(containing: now), displayCurrency: appSettings.primaryDisplayCurrency)
         let year = engine.billedTotal(records: records, range: try yearRange(containing: now), displayCurrency: appSettings.primaryDisplayCurrency)
+        let allTime = engine.billedTotal(records: records, range: try allTimeRange(endingAt: now), displayCurrency: appSettings.primaryDisplayCurrency)
         let upcoming = engine.amortizedTotal(
             records: activeRecords,
             range: try DateRange(start: calendar.startOfDay(for: now), endExclusive: calendar.date(byAdding: .day, value: 30, to: calendar.startOfDay(for: now))!),
@@ -95,18 +82,20 @@ struct StatisticsQueryService {
         )
         let monthCategoryCosts = categoryCosts(from: month, names: categoryNames, currency: appSettings.primaryDisplayCurrency)
         let yearCategoryCosts = categoryCosts(from: year, names: categoryNames, currency: appSettings.primaryDisplayCurrency)
+        let allTimeCategoryCosts = categoryCosts(from: allTime, names: categoryNames, currency: appSettings.primaryDisplayCurrency)
         let serviceNames = serviceDisplayNames(records: records)
         let monthServiceCosts = serviceCosts(from: month, names: serviceNames, currency: appSettings.primaryDisplayCurrency)
         let yearServiceCosts = serviceCosts(from: year, names: serviceNames, currency: appSettings.primaryDisplayCurrency)
-        let missing = Array(Set(month.missingRates + year.missingRates + upcoming.missingRates)).sorted()
+        let allTimeServiceCosts = serviceCosts(from: allTime, names: serviceNames, currency: appSettings.primaryDisplayCurrency)
+        let missing = Array(Set(month.missingRates + year.missingRates + allTime.missingRates + upcoming.missingRates)).sorted()
 
         return StatisticsPageState(
             monthTotal: month.total,
             yearTotal: year.total,
             upcoming30Days: upcoming.total,
             activeCount: activeRecords.count,
-            categories: yearCategoryCosts,
-            services: yearServiceCosts,
+            categories: allTimeCategoryCosts,
+            services: allTimeServiceCosts,
             monthCategories: monthCategoryCosts,
             yearCategories: yearCategoryCosts,
             monthServices: monthServiceCosts,
@@ -162,6 +151,13 @@ struct StatisticsQueryService {
             let year = calendar.component(.year, from: date)
             return PeriodCost(id: "\(year)", title: "\(year)", money: result.total ?? Money(unchecked: 0, currency: currency))
         }
+    }
+
+    private func allTimeRange(endingAt date: Date) throws -> DateRange {
+        try DateRange(
+            start: Date(timeIntervalSince1970: 0),
+            endExclusive: calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date))!
+        )
     }
 
     private func monthRange(containing date: Date) throws -> DateRange {

@@ -10,4 +10,11 @@ final class SubscriptionValidatorTests: XCTestCase {
         draft.paidAmount = 1
         XCTAssertThrowsError(try SubscriptionValidator().validate(draft, categories: [category]))
     }
+
+    func testValidatorRequiresEndDateForOneTimePurchase() {
+        let category = sampleCategory()
+        let draft = SubscriptionDraft(serviceName: "Setapp Deal", serviceKey: nil, categoryId: category.id, listedAmount: 100, listedCurrency: .CNY, paidAmount: nil, paidCurrency: nil, billingCycle: .oneTime, startDate: date("2026-01-01"), endDate: nil, nextBillingDate: nil, isNextBillingDateManual: false, status: .oneTime, paymentMethod: nil, reminderConfig: nil, websiteURL: nil, note: nil)
+
+        XCTAssertThrowsError(try SubscriptionValidator().validate(draft, categories: [category]))
+    }
 }

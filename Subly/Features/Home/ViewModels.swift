@@ -27,18 +27,27 @@ struct DueSoonRowState: Identifiable, Equatable {
     var iconName: String
 }
 
+struct AmortizedDetailRowState: Identifiable, Equatable {
+    var id: UUID
+    var name: String
+    var categoryName: String
+    var money: Money
+    var iconName: String
+}
+
 struct HomeSummaryCardState: Identifiable, Equatable {
     var id: String
     var title: String
     var money: Money?
     var count: Int?
+    var detailRows: [AmortizedDetailRowState]
 
-    static func money(_ id: String, title: String, money: Money?) -> HomeSummaryCardState {
-        HomeSummaryCardState(id: id, title: title, money: money, count: nil)
+    static func money(_ id: String, title: String, money: Money?, detailRows: [AmortizedDetailRowState] = []) -> HomeSummaryCardState {
+        HomeSummaryCardState(id: id, title: title, money: money, count: nil, detailRows: detailRows)
     }
 
     static func count(_ id: String, title: String, count: Int) -> HomeSummaryCardState {
-        HomeSummaryCardState(id: id, title: title, money: nil, count: count)
+        HomeSummaryCardState(id: id, title: title, money: nil, count: count, detailRows: [])
     }
 }
 
@@ -121,6 +130,7 @@ final class HomeViewModel: ObservableObject {
     private let exchangeRates: ExchangeRateRepository
     private let settings: AppSettingsRepository
     private let calendar: Calendar
+    private let nowProvider: () -> Date
 
     init(
         subscriptions: SubscriptionRepository,
@@ -128,7 +138,8 @@ final class HomeViewModel: ObservableObject {
         templates: ServiceTemplateRepository,
         exchangeRates: ExchangeRateRepository,
         settings: AppSettingsRepository,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        now: @escaping () -> Date = Date.init
     ) {
         self.subscriptions = subscriptions
         self.categories = categories
@@ -136,6 +147,7 @@ final class HomeViewModel: ObservableObject {
         self.exchangeRates = exchangeRates
         self.settings = settings
         self.calendar = calendar
+        self.nowProvider = now
     }
 
     func load(subscriptionScope: HomeSubscriptionScope? = nil) {
@@ -150,12 +162,12 @@ final class HomeViewModel: ObservableObject {
             let converter = CurrencyConverter(rates: try exchangeRates.fetchAll(), calendar: calendar)
             let resolver = BillingScheduleResolver(calendar: calendar)
             let engine = StatisticsEngine(scheduleResolver: resolver, converter: converter, calendar: calendar)
-            let now = Date()
+            let now = nowProvider()
             let monthRange = try currentMonthRange(containing: now)
             let yearRange = try currentYearRange(containing: now)
             let upcomingRange = try DateRange(start: calendar.startOfDay(for: now), endExclusive: calendar.date(byAdding: .day, value: 30, to: calendar.startOfDay(for: now))!)
-            let month = engine.billedTotal(records: allRecords, range: monthRange, displayCurrency: appSettings.primaryDisplayCurrency)
-            let year = engine.billedTotal(records: allRecords, range: yearRange, displayCurrency: appSettings.primaryDisplayCurrency)
+            let month = engine.amortizedTotal(records: allRecords, range: monthRange, displayCurrency: appSettings.primaryDisplayCurrency, cutoffOpenEndedAt: now)
+            let year = engine.amortizedTotal(records: allRecords, range: yearRange, displayCurrency: appSettings.primaryDisplayCurrency, cutoffOpenEndedAt: now)
             let upcoming = engine.amortizedTotal(records: activeRecords, range: upcomingRange, displayCurrency: appSettings.primaryDisplayCurrency)
             let selectedScope = subscriptionScope ?? state.subscriptionScope
             let visibleRecords = selectedScope == .active ? activeRecords : historyRecords
@@ -184,11 +196,29 @@ final class HomeViewModel: ObservableObject {
                 )
             }
             .sorted { $0.dueDate < $1.dueDate }
+            let monthDetails = amortizedDetails(
+                records: allRecords,
+                range: monthRange,
+                engine: engine,
+                displayCurrency: appSettings.primaryDisplayCurrency,
+                categoryMap: categoryMap,
+                templateIconMap: templateIconMap,
+                cutoffOpenEndedAt: now
+            )
+            let yearDetails = amortizedDetails(
+                records: allRecords,
+                range: yearRange,
+                engine: engine,
+                displayCurrency: appSettings.primaryDisplayCurrency,
+                categoryMap: categoryMap,
+                templateIconMap: templateIconMap,
+                cutoffOpenEndedAt: now
+            )
 
             let missing = Array(Set(month.missingRates + year.missingRates + upcoming.missingRates)).sorted()
             let summaryCards: [HomeSummaryCardState] = [
-                .money("month", title: "本月累计", money: month.total),
-                .money("year", title: "本年累计", money: year.total),
+                .money("month", title: "本月已摊销", money: month.total, detailRows: monthDetails),
+                .money("year", title: "今年已摊销", money: year.total, detailRows: yearDetails),
                 .count("active", title: "活跃订阅", count: activeRecords.count)
             ]
             state = HomeDashboardViewState(
@@ -219,6 +249,29 @@ final class HomeViewModel: ObservableObject {
             }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
+    }
+
+    private func amortizedDetails(
+        records: [SubscriptionRecord],
+        range: DateRange,
+        engine: StatisticsEngine,
+        displayCurrency: CurrencyCode,
+        categoryMap: [UUID: String],
+        templateIconMap: [String: String],
+        cutoffOpenEndedAt cutoffDate: Date?
+    ) -> [AmortizedDetailRowState] {
+        records.compactMap { record in
+            let result = engine.amortizedTotal(records: [record], range: range, displayCurrency: displayCurrency, cutoffOpenEndedAt: cutoffDate)
+            guard let money = result.total, money.amount > 0 else { return nil }
+            return AmortizedDetailRowState(
+                id: record.id,
+                name: record.serviceName,
+                categoryName: categoryMap[record.categoryId] ?? "其他",
+                money: money,
+                iconName: templateIconMap[record.serviceKey] ?? "creditcard"
+            )
+        }
+        .sorted { $0.money.amount > $1.money.amount }
     }
 
     private func currentMonthRange(containing date: Date) throws -> DateRange {
