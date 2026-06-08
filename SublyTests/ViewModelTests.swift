@@ -37,7 +37,7 @@ final class ViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.state.monthTotal)
     }
 
-    func testHomeViewModelYearAmortizationCutsOpenEndedSubscriptionsAtToday() throws {
+    func testHomeViewModelYearAmortizationCountsPaidOccurrencesThroughToday() throws {
         let category = sampleCategory()
         let iCloud = sampleRecord(
             name: "iCloud+",
@@ -62,7 +62,7 @@ final class ViewModelTests: XCTestCase {
 
         let yearCard = try XCTUnwrap(viewModel.state.summaryCards.first { $0.id == "year" })
         let iCloudDetail = try XCTUnwrap(yearCard.detailRows.first { $0.name == "iCloud+" })
-        XCTAssertEqual(NSDecimalNumber(decimal: iCloudDetail.money.amount).doubleValue, 70.43, accuracy: 0.01)
+        XCTAssertEqual(NSDecimalNumber(decimal: iCloudDetail.money.amount).doubleValue, 98.26, accuracy: 0.01)
     }
 
     func testHomeViewModelYearAmortizationIncludesFullOneTimeWindowInsideYear() throws {
@@ -98,7 +98,7 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(chatGPTDetail.money.amount, Decimal(string: "135.99"))
     }
 
-    func testHomeViewModelMonthAmortizationCutsOpenEndedSubscriptionsAtToday() throws {
+    func testHomeViewModelMonthAmortizationUsesFullMonthForOpenEndedSubscriptions() throws {
         let category = sampleCategory()
         let iCloud = sampleRecord(
             name: "iCloud+",
@@ -123,7 +123,67 @@ final class ViewModelTests: XCTestCase {
 
         let monthCard = try XCTUnwrap(viewModel.state.summaryCards.first { $0.id == "month" })
         let iCloudDetail = try XCTUnwrap(monthCard.detailRows.first { $0.name == "iCloud+" })
-        XCTAssertEqual(NSDecimalNumber(decimal: iCloudDetail.money.amount).doubleValue, 3.48, accuracy: 0.01)
+        XCTAssertEqual(NSDecimalNumber(decimal: iCloudDetail.money.amount).doubleValue, 13.04, accuracy: 0.01)
+    }
+
+    func testHomeViewModelMonthAmortizationCountsShortOneTimePaymentInBillingMonth() throws {
+        let category = sampleCategory()
+        let chatGPT = sampleRecord(
+            name: "ChatGPT",
+            serviceKey: "chatgpt",
+            categoryId: category.id,
+            amount: 19.99,
+            currency: .USD,
+            cycle: .oneTime,
+            start: date("2026-06-06"),
+            end: date("2026-07-05")
+        )
+        var paidRecord = chatGPT
+        paidRecord.paidAmount = Decimal(string: "135.99")
+        paidRecord.paidCurrency = .CNY
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [paidRecord]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2026-01-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2026-06-08") }
+        )
+
+        viewModel.load()
+
+        let monthCard = try XCTUnwrap(viewModel.state.summaryCards.first { $0.id == "month" })
+        let chatGPTDetail = try XCTUnwrap(monthCard.detailRows.first { $0.name == "ChatGPT" })
+        XCTAssertEqual(chatGPTDetail.money.amount, Decimal(string: "135.99"))
+    }
+
+    func testHomeViewModelMonthAmortizationUsesLeapYearFebruaryLength() throws {
+        let category = sampleCategory()
+        let iCloud = sampleRecord(
+            name: "iCloud+",
+            serviceKey: "icloud-plus",
+            categoryId: category.id,
+            amount: 90,
+            currency: .CNY,
+            cycle: .quarterly,
+            start: date("2024-02-01")
+        )
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [iCloud]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2024-02-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2024-02-08") }
+        )
+
+        viewModel.load()
+
+        let monthCard = try XCTUnwrap(viewModel.state.summaryCards.first { $0.id == "month" })
+        let iCloudDetail = try XCTUnwrap(monthCard.detailRows.first { $0.name == "iCloud+" })
+        XCTAssertEqual(NSDecimalNumber(decimal: iCloudDetail.money.amount).doubleValue, 29, accuracy: 0.01)
     }
 
     func testHomeViewModelDistinguishesNoRecordsFromNoActiveRecords() {

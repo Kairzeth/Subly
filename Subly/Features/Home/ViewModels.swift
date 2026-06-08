@@ -166,8 +166,8 @@ final class HomeViewModel: ObservableObject {
             let monthRange = try currentMonthRange(containing: now)
             let yearRange = try currentYearRange(containing: now)
             let upcomingRange = try DateRange(start: calendar.startOfDay(for: now), endExclusive: calendar.date(byAdding: .day, value: 30, to: calendar.startOfDay(for: now))!)
-            let month = engine.amortizedTotal(records: allRecords, range: monthRange, displayCurrency: appSettings.primaryDisplayCurrency, cutoffOpenEndedAt: now)
-            let year = engine.amortizedTotal(records: allRecords, range: yearRange, displayCurrency: appSettings.primaryDisplayCurrency, cutoffOpenEndedAt: now)
+            let month = engine.amortizedTotal(records: allRecords, range: monthRange, displayCurrency: appSettings.primaryDisplayCurrency, scope: .monthly)
+            let year = engine.amortizedTotal(records: allRecords, range: yearRange, displayCurrency: appSettings.primaryDisplayCurrency, scope: .yearly(cutoff: now))
             let upcoming = engine.amortizedTotal(records: activeRecords, range: upcomingRange, displayCurrency: appSettings.primaryDisplayCurrency)
             let selectedScope = subscriptionScope ?? state.subscriptionScope
             let visibleRecords = selectedScope == .active ? activeRecords : historyRecords
@@ -203,7 +203,7 @@ final class HomeViewModel: ObservableObject {
                 displayCurrency: appSettings.primaryDisplayCurrency,
                 categoryMap: categoryMap,
                 templateIconMap: templateIconMap,
-                cutoffOpenEndedAt: now
+                scope: .monthly
             )
             let yearDetails = amortizedDetails(
                 records: allRecords,
@@ -212,7 +212,7 @@ final class HomeViewModel: ObservableObject {
                 displayCurrency: appSettings.primaryDisplayCurrency,
                 categoryMap: categoryMap,
                 templateIconMap: templateIconMap,
-                cutoffOpenEndedAt: now
+                scope: .yearly(cutoff: now)
             )
 
             let missing = Array(Set(month.missingRates + year.missingRates + upcoming.missingRates)).sorted()
@@ -258,10 +258,10 @@ final class HomeViewModel: ObservableObject {
         displayCurrency: CurrencyCode,
         categoryMap: [UUID: String],
         templateIconMap: [String: String],
-        cutoffOpenEndedAt cutoffDate: Date?
+        scope: AmortizationScope
     ) -> [AmortizedDetailRowState] {
         records.compactMap { record in
-            let result = engine.amortizedTotal(records: [record], range: range, displayCurrency: displayCurrency, cutoffOpenEndedAt: cutoffDate)
+            let result = engine.amortizedTotal(records: [record], range: range, displayCurrency: displayCurrency, scope: scope)
             guard let money = result.total, money.amount > 0 else { return nil }
             return AmortizedDetailRowState(
                 id: record.id,
