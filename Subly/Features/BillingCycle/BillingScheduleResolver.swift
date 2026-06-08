@@ -6,6 +6,7 @@ struct BillingOccurrence: Equatable, Identifiable {
     var serviceKey: String
     var money: Money
     var coverage: DateRange
+    var fullCoverage: DateRange
     var billingDate: Date
     var totalCycleDays: Int
     var intersectedDays: Int
@@ -117,6 +118,7 @@ struct BillingScheduleResolver: BillingScheduleResolving {
             serviceKey: record.serviceKey,
             money: record.effectiveMoney,
             coverage: coverage,
+            fullCoverage: queryRange,
             billingDate: billingDate,
             totalCycleDays: max(1, queryRange.coveredDays(calendar: calendar)),
             intersectedDays: coverage.coveredDays(calendar: calendar)

@@ -52,17 +52,46 @@ final class StatisticsEngineTests: XCTestCase {
         XCTAssertEqual(result.total?.amount, 365)
     }
 
-    func testOpenEndedAmortizedTotalCanBeCutOffAtToday() throws {
+    func testOpenEndedAmortizedTotalUsesFullRequestedRange() throws {
         let resolver = BillingScheduleResolver(calendar: fixedCalendar())
         let converter = CurrencyConverter(rates: [], calendar: fixedCalendar())
         let engine = StatisticsEngine(scheduleResolver: resolver, converter: converter, calendar: fixedCalendar())
         let range = try DateRange.fromUserDates(start: date("2026-01-01"), inclusiveEnd: date("2026-12-31"), calendar: fixedCalendar())
         let record = sampleRecord(amount: 40, currency: .CNY, cycle: .quarterly, start: date("2025-08-12"))
 
-        let result = engine.amortizedTotal(records: [record], range: range, displayCurrency: .CNY, cutoffOpenEndedAt: date("2026-06-08"))
+        let result = engine.amortizedTotal(records: [record], range: range, displayCurrency: .CNY)
 
         XCTAssertFalse(result.isIncomplete)
-        XCTAssertEqual(NSDecimalNumber(decimal: result.total?.amount ?? 0).doubleValue, 70.43, accuracy: 0.01)
+        XCTAssertEqual(NSDecimalNumber(decimal: result.total?.amount ?? 0).doubleValue, 160, accuracy: 0.01)
+    }
+
+    func testMonthlyScopeCountsShortOneTimePaymentInBillingMonthOnly() throws {
+        let resolver = BillingScheduleResolver(calendar: fixedCalendar())
+        let converter = CurrencyConverter(rates: [], calendar: fixedCalendar())
+        let engine = StatisticsEngine(scheduleResolver: resolver, converter: converter, calendar: fixedCalendar())
+        let juneRange = try DateRange.fromUserDates(start: date("2026-06-01"), inclusiveEnd: date("2026-06-30"), calendar: fixedCalendar())
+        let julyRange = try DateRange.fromUserDates(start: date("2026-07-01"), inclusiveEnd: date("2026-07-31"), calendar: fixedCalendar())
+        let record = sampleRecord(amount: 135.99, currency: .CNY, cycle: .oneTime, start: date("2026-06-06"), end: date("2026-07-05"), status: .oneTime)
+
+        let june = engine.amortizedTotal(records: [record], range: juneRange, displayCurrency: .CNY, scope: .monthly)
+        let july = engine.amortizedTotal(records: [record], range: julyRange, displayCurrency: .CNY, scope: .monthly)
+
+        XCTAssertEqual(june.total?.amount, Decimal(string: "135.99"))
+        XCTAssertEqual(july.total?.amount, 0)
+    }
+
+    func testYearlyScopeCountsOnlyPaidOccurrencesUpToCutoff() throws {
+        let resolver = BillingScheduleResolver(calendar: fixedCalendar())
+        let converter = CurrencyConverter(rates: [], calendar: fixedCalendar())
+        let engine = StatisticsEngine(scheduleResolver: resolver, converter: converter, calendar: fixedCalendar())
+        let range = try DateRange.fromUserDates(start: date("2026-01-01"), inclusiveEnd: date("2026-12-31"), calendar: fixedCalendar())
+        let record = sampleRecord(amount: 30, currency: .CNY, cycle: .quarterly, start: date("2026-01-01"))
+
+        let june = engine.amortizedTotal(records: [record], range: range, displayCurrency: .CNY, scope: .yearly(cutoff: date("2026-06-08")))
+        let august = engine.amortizedTotal(records: [record], range: range, displayCurrency: .CNY, scope: .yearly(cutoff: date("2026-08-08")))
+
+        XCTAssertEqual(june.total?.amount, 60)
+        XCTAssertEqual(august.total?.amount, 90)
     }
 
     func testYearlyAmortizedTotalProratesCrossYearCycle() throws {
