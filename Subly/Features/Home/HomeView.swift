@@ -314,28 +314,35 @@ struct SubscriptionRowView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(row.name)
                     .font(.body.weight(.medium))
-                    .lineLimit(1)
-                HStack {
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
                     if showsStatus {
                         StatusTagView(status: row.status)
                     }
                     Text(row.categoryName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     Text(row.billingCycleName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
                 CurrencyAmountText(money: row.money, font: .system(.subheadline, design: .rounded, weight: .semibold))
-                if let date = row.nextBillingDate {
-                    Text(date.formatted(date: .abbreviated, time: .omitted))
+                if let date = row.displayDate {
+                    Text("\(row.displayDateLabel ?? "日期") \(date.formatted(date: .abbreviated, time: .omitted))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
     }
 }
@@ -358,13 +365,18 @@ private struct DueSoonRowView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Label(row.name, systemImage: row.iconName)
                     .font(.body.weight(.medium))
-                    .lineLimit(1)
-                Text(row.status == .trial ? "试用到期" : "订阅扣费")
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(row.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
             Spacer()
             CurrencyAmountText(money: row.money, font: .system(.subheadline, design: .rounded, weight: .semibold))
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.vertical, SublySpacing.xs)
         .frame(maxWidth: .infinity, alignment: .center)

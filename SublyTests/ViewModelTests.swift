@@ -7,7 +7,8 @@ final class ViewModelTests: XCTestCase {
         let category = sampleCategory()
         let repository = InMemorySubscriptionRepository(records: [
             sampleRecord(categoryId: category.id, currency: .CNY),
-            sampleRecord(name: "Paused", serviceKey: "paused", categoryId: category.id, status: .paused)
+            sampleRecord(name: "Pending", serviceKey: "pending", categoryId: category.id, currency: .CNY, status: .pendingRenewalDecision),
+            sampleRecord(name: "Paused", serviceKey: "paused", categoryId: category.id, currency: .CNY, status: .paused)
         ])
         let viewModel = HomeViewModel(
             subscriptions: repository,
@@ -18,8 +19,81 @@ final class ViewModelTests: XCTestCase {
             calendar: fixedCalendar()
         )
         viewModel.load()
-        XCTAssertEqual(viewModel.state.activeCount, 1)
-        XCTAssertEqual(viewModel.state.subscriptionRows.first?.name, "ChatGPT")
+        XCTAssertEqual(viewModel.state.activeCount, 2)
+        XCTAssertEqual(Set(viewModel.state.subscriptionRows.map(\.name)), Set(["ChatGPT", "Pending"]))
+    }
+
+    func testHomeRowsUseSemanticDisplayDates() {
+        let category = sampleCategory()
+        let record = sampleRecord(categoryId: category.id, currency: .CNY, start: date("2026-01-01"))
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [record]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2026-01-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2026-01-15") }
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.state.subscriptionRows.first?.displayDate, date("2026-02-01"))
+        XCTAssertEqual(viewModel.state.subscriptionRows.first?.displayDateLabel, "下次扣费")
+    }
+
+    func testHomeRowsPreferEndDateWhenItMatchesNextBillingDate() {
+        let category = sampleCategory()
+        let record = sampleRecord(
+            name: "VPN",
+            serviceKey: "vpn",
+            categoryId: category.id,
+            amount: 108,
+            currency: .CNY,
+            cycle: .quarterly,
+            start: date("2025-10-02"),
+            end: date("2026-07-02")
+        )
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [record]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2026-01-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2026-06-14") }
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.state.subscriptionRows.first?.displayDate, date("2026-07-02"))
+        XCTAssertEqual(viewModel.state.subscriptionRows.first?.displayDateLabel, "结束")
+        XCTAssertEqual(viewModel.state.dueSoonRows.first?.subtitle, "订阅到期")
+    }
+
+    func testHomeDueSoonUsesEarlierOfEndDateAndBillingDate() {
+        let category = sampleCategory()
+        let record = sampleRecord(
+            categoryId: category.id,
+            currency: .CNY,
+            cycle: .yearly,
+            start: date("2026-01-01"),
+            end: date("2026-06-20")
+        )
+        let viewModel = HomeViewModel(
+            subscriptions: InMemorySubscriptionRepository(records: [record]),
+            categories: InMemoryCategoryRepository(categories: [category]),
+            templates: InMemoryServiceTemplateRepository(templates: []),
+            exchangeRates: InMemoryExchangeRateRepository(rates: []),
+            settings: InMemorySettingsRepository(settings: .defaults(now: date("2026-01-01"))),
+            calendar: fixedCalendar(),
+            now: { date("2026-06-01") }
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.state.dueSoonRows.first?.dueDate, date("2026-06-20"))
+        XCTAssertEqual(viewModel.state.dueSoonRows.first?.subtitle, "订阅到期")
     }
 
     func testHomeViewModelMarksMissingExchangeRateIncomplete() {
@@ -404,6 +478,64 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(subscriptions.records.first?.serviceKey, "chatgpt")
     }
 
+    func testSubscriptionFormConvertsOneTimeToRecurringCleanly() {
+        let category = sampleCategory()
+        let existing = sampleRecord(
+            categoryId: category.id,
+            amount: 100,
+            currency: .CNY,
+            cycle: .oneTime,
+            start: date("2026-06-01"),
+            end: date("2026-06-30"),
+            status: .oneTime
+        )
+        let viewModel = SubscriptionFormViewModel(
+            commandService: SubscriptionCommandService(
+                repository: InMemorySubscriptionRepository(records: [existing]),
+                categories: InMemoryCategoryRepository(categories: [category])
+            ),
+            categoryRepository: InMemoryCategoryRepository(categories: [category]),
+            existingRecord: existing
+        )
+
+        viewModel.load()
+        viewModel.billingCycle = .yearly
+        viewModel.billingCycleChanged(from: .oneTime, to: .yearly)
+
+        XCTAssertEqual(viewModel.status, .active)
+        XCTAssertFalse(viewModel.hasEndDate)
+        XCTAssertFalse(viewModel.hasManualNextBillingDate)
+    }
+
+    func testSubscriptionFormStatusChangesKeepDatesConsistent() {
+        let category = sampleCategory()
+        let existing = sampleRecord(categoryId: category.id, amount: 20, currency: .CNY, start: date("2026-06-01"))
+        let viewModel = SubscriptionFormViewModel(
+            commandService: SubscriptionCommandService(
+                repository: InMemorySubscriptionRepository(records: [existing]),
+                categories: InMemoryCategoryRepository(categories: [category])
+            ),
+            categoryRepository: InMemoryCategoryRepository(categories: [category]),
+            existingRecord: existing
+        )
+
+        viewModel.load()
+        viewModel.status = .cancelled
+        viewModel.statusChanged(from: .active, to: .cancelled)
+        XCTAssertTrue(viewModel.hasEndDate)
+        XCTAssertFalse(viewModel.hasManualNextBillingDate)
+
+        viewModel.status = .oneTime
+        viewModel.statusChanged(from: .cancelled, to: .oneTime)
+        XCTAssertEqual(viewModel.billingCycle, .oneTime)
+        XCTAssertTrue(viewModel.hasEndDate)
+
+        viewModel.status = .active
+        viewModel.statusChanged(from: .oneTime, to: .active)
+        XCTAssertEqual(viewModel.billingCycle, .monthly)
+        XCTAssertFalse(viewModel.hasEndDate)
+    }
+
     func testStatisticsQueryServiceBuildsServiceRanking() throws {
         let category = sampleCategory()
         let settings = AppSettings.defaults(now: date("2026-01-01"))
@@ -488,7 +620,7 @@ final class InMemorySubscriptionRepository: SubscriptionRepository {
 
     func fetchAll() throws -> [SubscriptionRecord] { records }
     func fetch(id: UUID) throws -> SubscriptionRecord? { records.first { $0.id == id } }
-    func fetchActive() throws -> [SubscriptionRecord] { records.filter { $0.status == .active || $0.status == .trial } }
+    func fetchActive() throws -> [SubscriptionRecord] { records.filter(\.status.isOngoing) }
     func fetchByServiceKey(_ serviceKey: String) throws -> [SubscriptionRecord] { records.filter { $0.serviceKey == serviceKey } }
     func save(_ record: SubscriptionRecord) throws {
         if let index = records.firstIndex(where: { $0.id == record.id }) {

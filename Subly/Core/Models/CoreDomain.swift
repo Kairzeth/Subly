@@ -24,6 +24,15 @@ enum SubscriptionStatus: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    var isOngoing: Bool {
+        switch self {
+        case .active, .trial, .pendingRenewalDecision:
+            true
+        case .paused, .cancelled, .oneTime, .expired:
+            false
+        }
+    }
+
     var displayName: String {
         switch self {
         case .active: "活跃"

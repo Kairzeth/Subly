@@ -8,11 +8,12 @@ final class RepositoryTests: XCTestCase {
         let container = try makeInMemoryContainer()
         let repository = SwiftDataSubscriptionRepository(context: container.mainContext)
         let active = sampleRecord(status: .active)
+        let pending = sampleRecord(name: "Claude", serviceKey: "claude", status: .pendingRenewalDecision)
         let cancelled = sampleRecord(name: "Netflix", serviceKey: "netflix", status: .cancelled)
-        try repository.saveMany([active, cancelled])
+        try repository.saveMany([active, pending, cancelled])
 
-        XCTAssertEqual(try repository.fetchAll().count, 2)
-        XCTAssertEqual(try repository.fetchActive().map(\.id), [active.id])
+        XCTAssertEqual(try repository.fetchAll().count, 3)
+        XCTAssertEqual(Set(try repository.fetchActive().map(\.id)), Set([active.id, pending.id]))
         XCTAssertEqual(try repository.fetchByServiceKey("netflix").first?.id, cancelled.id)
 
         try repository.delete(id: active.id)

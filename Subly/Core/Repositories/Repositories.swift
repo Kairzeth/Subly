@@ -15,7 +15,7 @@ final class SwiftDataSubscriptionRepository: SubscriptionRepository {
     }
 
     func fetchActive() throws -> [SubscriptionRecord] {
-        try context.fetch(FetchDescriptor<SubscriptionRecordModel>(predicate: #Predicate { $0.statusRawValue == "active" || $0.statusRawValue == "trial" })).map { try $0.domain() }
+        try context.fetch(FetchDescriptor<SubscriptionRecordModel>(predicate: #Predicate { $0.statusRawValue == "active" || $0.statusRawValue == "trial" || $0.statusRawValue == "pendingRenewalDecision" })).map { try $0.domain() }
     }
 
     func fetchByServiceKey(_ serviceKey: String) throws -> [SubscriptionRecord] {

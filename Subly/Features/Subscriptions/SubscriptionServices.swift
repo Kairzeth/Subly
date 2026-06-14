@@ -148,6 +148,69 @@ final class SubscriptionFormViewModel: ObservableObject {
         websiteURL = template.websiteURL?.absoluteString ?? ""
     }
 
+    func billingCycleChanged(from oldCycle: BillingCycle, to newCycle: BillingCycle) {
+        switch newCycle {
+        case .oneTime:
+            status = .oneTime
+            hasEndDate = true
+            hasManualNextBillingDate = false
+            clampEndDateToStart()
+        case .trial:
+            status = .trial
+            hasEndDate = true
+            clampEndDateToStart()
+        default:
+            if oldCycle == .oneTime {
+                hasEndDate = false
+                endDate = startDate
+            }
+            if status == .oneTime || status == .trial {
+                status = .active
+            }
+        }
+        clearManualBillingDateIfNeeded()
+    }
+
+    func statusChanged(from oldStatus: SubscriptionStatus, to newStatus: SubscriptionStatus) {
+        let hadEndDate = hasEndDate
+        switch newStatus {
+        case .active, .pendingRenewalDecision:
+            if billingCycle == .oneTime || billingCycle.kind == .trial {
+                billingCycle = .monthly
+            }
+            if oldStatus == .oneTime || oldStatus == .trial || !oldStatus.isOngoing {
+                hasEndDate = false
+                endDate = startDate
+            }
+            if hasEndDate && endDate < startDate {
+                endDate = startDate
+            }
+        case .trial:
+            billingCycle = .trial(days: nil)
+            hasEndDate = true
+            clampEndDateToStart()
+        case .oneTime:
+            billingCycle = .oneTime
+            hasEndDate = true
+            hasManualNextBillingDate = false
+            clampEndDateToStart()
+        case .paused, .cancelled, .expired:
+            hasEndDate = true
+            hasManualNextBillingDate = false
+            if oldStatus.isOngoing || !hadEndDate || endDate < startDate {
+                endDate = max(startDate, Date())
+            }
+        }
+        clearManualBillingDateIfNeeded()
+    }
+
+    func startDateChanged() {
+        clampEndDateToStart()
+        if nextBillingDate < startDate {
+            nextBillingDate = startDate
+        }
+    }
+
     func save() throws -> SubscriptionRecord {
         guard let categoryId = selectedCategoryId else { throw ValidationError.missingCategory }
         let amount = Decimal(string: listedAmount.trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1
@@ -219,6 +282,18 @@ final class SubscriptionFormViewModel: ObservableObject {
         reminderEnabled = record.reminderConfig?.isEnabled ?? true
         reminderDaysBefore = record.reminderConfig?.daysBefore ?? 1
         selectedCategoryId = record.categoryId
+    }
+
+    private func clampEndDateToStart() {
+        if endDate < startDate {
+            endDate = startDate
+        }
+    }
+
+    private func clearManualBillingDateIfNeeded() {
+        if !status.allowsFutureBillingReminder {
+            hasManualNextBillingDate = false
+        }
     }
 }
 

@@ -57,7 +57,7 @@ struct ServiceAggregationQueryService {
         return ServiceAggregationDetail(
             serviceKey: serviceKey,
             displayName: displayName(for: records),
-            activeSegments: records.filter { $0.status == .active || $0.status == .trial || $0.status == .pendingRenewalDecision },
+            activeSegments: records.filter(\.status.isOngoing),
             historySegments: records,
             cumulativeCost: result.total,
             isIncomplete: result.isIncomplete,
@@ -67,8 +67,8 @@ struct ServiceAggregationQueryService {
 
     private func displayName(for records: [SubscriptionRecord]) -> String {
         records.sorted {
-            if $0.status == .active, $1.status != .active { return true }
-            if $1.status == .active, $0.status != .active { return false }
+            if $0.status.isOngoing, !$1.status.isOngoing { return true }
+            if $1.status.isOngoing, !$0.status.isOngoing { return false }
             return $0.updatedAt > $1.updatedAt
         }.first?.serviceName ?? "未命名服务"
     }

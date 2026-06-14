@@ -7,7 +7,8 @@ struct SubscriptionRowState: Identifiable, Equatable {
     var status: SubscriptionStatus
     var categoryName: String
     var billingCycleName: String
-    var nextBillingDate: Date?
+    var displayDate: Date?
+    var displayDateLabel: String?
     var iconName: String
 }
 
@@ -23,6 +24,7 @@ struct DueSoonRowState: Identifiable, Equatable {
     var name: String
     var money: Money
     var dueDate: Date
+    var subtitle: String
     var status: SubscriptionStatus
     var iconName: String
 }
@@ -154,8 +156,8 @@ final class HomeViewModel: ObservableObject {
         do {
             let subscriptionQuery = SubscriptionQueryService(repository: subscriptions)
             let allRecords = try subscriptionQuery.all()
-            let activeRecords = allRecords.filter { $0.status == .active || $0.status == .trial }
-            let historyRecords = allRecords.filter { !($0.status == .active || $0.status == .trial) }
+            let activeRecords = allRecords.filter(\.status.isOngoing)
+            let historyRecords = allRecords.filter { !$0.status.isOngoing }
             let categoryMap = Dictionary(uniqueKeysWithValues: try categories.fetchAll(includeArchived: true).map { ($0.id, $0.name) })
             let templateIconMap = Dictionary(uniqueKeysWithValues: try templates.fetchAll().map { ($0.serviceKey, $0.iconStyle.systemName) })
             let appSettings = try settings.fetch()
@@ -172,25 +174,29 @@ final class HomeViewModel: ObservableObject {
             let selectedScope = subscriptionScope ?? state.subscriptionScope
             let visibleRecords = selectedScope == .active ? activeRecords : historyRecords
             let rows = sortedRows(visibleRecords.map {
-                SubscriptionRowState(
+                let dateInfo = displayDate(for: $0, resolver: resolver, now: now)
+                return SubscriptionRowState(
                     id: $0.id,
                     name: $0.serviceName,
                     money: $0.effectiveMoney,
                     status: $0.status,
                     categoryName: categoryMap[$0.categoryId] ?? "其他",
                     billingCycleName: $0.billingCycle.displayName,
-                    nextBillingDate: (try? resolver.nextBillingDate(for: $0, after: now)) ?? $0.nextBillingDate,
+                    displayDate: dateInfo?.date,
+                    displayDateLabel: dateInfo?.label,
                     iconName: templateIconMap[$0.serviceKey] ?? "creditcard"
                 )
             })
             let dueSoonRows = activeRecords.compactMap { record -> DueSoonRowState? in
-                guard let dueDate = (try? resolver.nextBillingDate(for: record, after: now)) ?? record.nextBillingDate else { return nil }
+                guard let due = dueSoonDate(for: record, resolver: resolver, now: now) else { return nil }
+                let dueDate = due.date
                 guard dueDate >= calendar.startOfDay(for: now), dueDate <= upcomingRange.endExclusive else { return nil }
                 return DueSoonRowState(
                     id: record.id,
                     name: record.serviceName,
                     money: record.effectiveMoney,
                     dueDate: dueDate,
+                    subtitle: due.label,
                     status: record.status,
                     iconName: templateIconMap[record.serviceKey] ?? "calendar"
                 )
@@ -242,13 +248,57 @@ final class HomeViewModel: ObservableObject {
 
     private func sortedRows(_ rows: [SubscriptionRowState]) -> [SubscriptionRowState] {
         rows.sorted {
-            let lhsDate = $0.nextBillingDate ?? .distantFuture
-            let rhsDate = $1.nextBillingDate ?? .distantFuture
+            let lhsDate = $0.displayDate ?? .distantFuture
+            let rhsDate = $1.displayDate ?? .distantFuture
             if lhsDate != rhsDate {
                 return lhsDate < rhsDate
             }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
+    }
+
+    private func displayDate(
+        for record: SubscriptionRecord,
+        resolver: BillingScheduleResolver,
+        now: Date
+    ) -> (date: Date, label: String)? {
+        let endDateInfo = record.endDate.map { ($0, record.status.isOngoing ? "结束" : "已结束") }
+        if record.status.allowsFutureBillingReminder,
+           let nextBillingDate = (try? resolver.nextBillingDate(for: record, after: now)) ?? record.nextBillingDate,
+           !shouldPreferEndDate(record.endDate, over: nextBillingDate) {
+            return (nextBillingDate, record.status == .trial ? "试用到期" : "下次扣费")
+        }
+        if let endDateInfo {
+            return endDateInfo
+        }
+        return nil
+    }
+
+    private func dueSoonDate(
+        for record: SubscriptionRecord,
+        resolver: BillingScheduleResolver,
+        now: Date
+    ) -> (date: Date, label: String)? {
+        let today = calendar.startOfDay(for: now)
+        var candidates: [(date: Date, label: String)] = []
+        if let nextBillingDate = (try? resolver.nextBillingDate(for: record, after: now)) ?? record.nextBillingDate,
+           calendar.startOfDay(for: nextBillingDate) >= today {
+            candidates.append((nextBillingDate, record.status == .trial ? "试用到期" : "订阅扣费"))
+        }
+        if let endDate = record.endDate, calendar.startOfDay(for: endDate) >= today {
+            candidates.append((endDate, record.status == .trial ? "试用到期" : "订阅到期"))
+        }
+        return candidates.sorted {
+            if calendar.startOfDay(for: $0.date) == calendar.startOfDay(for: $1.date) {
+                return $0.label.contains("到期")
+            }
+            return $0.date < $1.date
+        }.first
+    }
+
+    private func shouldPreferEndDate(_ endDate: Date?, over nextBillingDate: Date) -> Bool {
+        guard let endDate else { return false }
+        return calendar.startOfDay(for: endDate) <= calendar.startOfDay(for: nextBillingDate)
     }
 
     private func amortizedDetails(

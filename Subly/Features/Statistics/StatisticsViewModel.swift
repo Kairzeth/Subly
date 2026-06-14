@@ -63,7 +63,7 @@ struct StatisticsQueryService {
 
     func pageState(now: Date = Date()) throws -> StatisticsPageState {
         let records = try subscriptions.fetchAll()
-        let activeRecords = records.filter { $0.status == .active || $0.status == .trial || $0.status == .pendingRenewalDecision }
+        let activeRecords = records.filter(\.status.isOngoing)
         let appSettings = try settings.fetch()
         let categoryList = try categories.fetchAll(includeArchived: true)
         let categoryNames = Dictionary(uniqueKeysWithValues: categoryList.map { ($0.id, $0.name) })
@@ -125,8 +125,8 @@ struct StatisticsQueryService {
         let grouped = Dictionary(grouping: records, by: \.serviceKey)
         return grouped.mapValues { records in
             records.sorted {
-                if $0.status == .active, $1.status != .active { return true }
-                if $1.status == .active, $0.status != .active { return false }
+                if $0.status.isOngoing, !$1.status.isOngoing { return true }
+                if $1.status.isOngoing, !$0.status.isOngoing { return false }
                 return $0.updatedAt > $1.updatedAt
             }.first?.serviceName ?? ""
         }

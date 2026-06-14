@@ -34,10 +34,17 @@ struct SubscriptionListView: View {
                             onChanged: load
                         )
                     } label: {
-                        HStack {
+                        HStack(spacing: SublySpacing.md) {
                             Text(record.serviceName)
+                                .font(.body.weight(.medium))
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1)
                             Spacer()
                             CurrencyAmountText(money: record.effectiveMoney)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                     }
                 }
@@ -498,13 +505,14 @@ struct SubscriptionFormView: View {
         .task {
             viewModel.load()
         }
-        .onChange(of: viewModel.billingCycle) { _, cycle in
-            if cycle == .oneTime {
-                viewModel.hasEndDate = true
-                if viewModel.endDate < viewModel.startDate {
-                    viewModel.endDate = viewModel.startDate
-                }
-            }
+        .onChange(of: viewModel.billingCycle) { oldCycle, cycle in
+            viewModel.billingCycleChanged(from: oldCycle, to: cycle)
+        }
+        .onChange(of: viewModel.status) { oldStatus, status in
+            viewModel.statusChanged(from: oldStatus, to: status)
+        }
+        .onChange(of: viewModel.startDate) { _, _ in
+            viewModel.startDateChanged()
         }
     }
 }
